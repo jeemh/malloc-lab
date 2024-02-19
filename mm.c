@@ -92,7 +92,14 @@ void *mm_malloc(size_t size)
 
     if ((bp = find_fit(asize)) != NULL) // 가용 블록 검색
     {
-        place(bp, asize); // 할당
+        if(GET_SIZE(HDRP(bp)) - asize >= 8) {
+            place(bp, asize); // 할당
+        } else {
+            splice_free_block(bp); // free_list에서 해당 블록 제거
+            PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1)); // 해당 블록 전부 사용
+            PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
+        }
+        
         return bp;        // 새로 할당된 블록의 포인터 리턴
     }
     // 적합한 블록이 없을 경우 힙확장
@@ -101,7 +108,7 @@ void *mm_malloc(size_t size)
         return NULL;
     place(bp, asize);
     return bp;
-    }
+}
 
 void mm_free(void *bp)
 {
@@ -208,35 +215,21 @@ static void *find_fit(size_t asize)
 
 static void place(void *bp, size_t asize)
 {
+    splice_free_block(bp); // free_list에서 해당 블록 제거
+
     size_t csize = GET_SIZE(HDRP(bp)); // 현재 블록의 크기
 
     if ((csize - asize) >= (2 * DSIZE)) // 차이가 최소 블록 크기 16보다 같거나 크면 분할
     {
         PUT(HDRP(bp), PACK(asize, 1)); // 현재 블록에는 필요한 만큼만 할당
         PUT(FTRP(bp), PACK(asize, 1));
-        bp = NEXT_BLKP(bp); // 다음 블록으로 이동
 
-        PUT(HDRP(bp), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
-        PUT(FTRP(bp), PACK((csize - asize), 0));
-
-        GET_SUCC(bp) = GET_SUCC(PREV_BLKP(bp)); // 루트였던 블록의 PRED를 추가된 블록으로 연결
-        
-        if (PREV_BLKP(bp) == free_listp) 
-        {
-            free_listp = bp;
-        }
-        else
-        {
-            GET_PRED(bp) = GET_PRED(PREV_BLKP(bp));
-            GET_SUCC(GET_PRED(PREV_BLKP(bp))) = bp;
-        }
-
-        if (GET_SUCC(bp) != NULL) // 다음 가용 블록이 있을 경우만
-            GET_PRED(GET_SUCC(bp)) = bp;
+        PUT(HDRP(NEXT_BLKP(bp)), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
+        PUT(FTRP(NEXT_BLKP(bp)), PACK((csize - asize), 0));
+        add_free_block(NEXT_BLKP(bp)); // 남은 블록을 free_list에 추가
     }
     else
     {
-        splice_free_block(bp);
         PUT(HDRP(bp), PACK(csize, 1)); // 해당 블록 전부 사용
         PUT(FTRP(bp), PACK(csize, 1));
     }
