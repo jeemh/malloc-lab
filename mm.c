@@ -92,13 +92,6 @@ void *mm_malloc(size_t size)
 
     if ((bp = find_fit(asize)) != NULL) // 가용 블록 검색
     {
-        // if(GET_SIZE(HDRP(bp)) - asize >= 8) {
-        //     place(bp, asize); // 할당
-        // } else {
-        //     splice_free_block(bp); // free_list에서 해당 블록 제거
-        //     PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1)); // 해당 블록 전부 사용
-        //     PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
-        // }
         place(bp, asize); // 할당
         return bp;        // 새로 할당된 블록의 포인터 리턴
     }
@@ -147,7 +140,6 @@ void *mm_realloc(void *ptr, size_t size)
 static void *extend_heap(size_t words)
 {
     char *bp;
-
     // 더블 워드 정렬 유지
     // size: 확장할 크기
     size_t size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE; // 2워드의 가장 가까운 배수로 반올림 (홀수면 1 더해서 곱함)
@@ -168,18 +160,14 @@ static void *extend_heap(size_t words)
 //     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); // 다음 블록 할당 상태
 //     size_t size = GET_SIZE(HDRP(bp));                   // 현재 블록 사이즈
 
-//     if (prev_alloc && next_alloc) // 모두 할당된 경우
-//     {
-//         add_free_block(bp); // free_list에 추가
-//         return bp;          // 블록의 포인터 반환
-//     }
-//     else if (prev_alloc && !next_alloc) // 다음 블록만 빈 경우
+//     //모두 할당된 경우 마지막에 bp를 free list에 추가해주고 리턴만 해주면 됨
+
+//     if (prev_alloc && !next_alloc) // 다음 블록만 빈 경우
 //     {
 //         splice_free_block(NEXT_BLKP(bp)); // 가용 블록을 free_list에서 제거
 //         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
 //         PUT(HDRP(bp), PACK(size, 0)); // 현재 블록 헤더 재설정
 //         PUT(FTRP(bp), PACK(size, 0)); // 다음 블록 푸터 재설정 (위에서 헤더를 재설정했으므로, FTRP(bp)는 합쳐질 다음 블록의 푸터가 됨)
-//         add_free_block(bp); 
 //     }
 //     else if (!prev_alloc && next_alloc) // 이전 블록만 빈 경우
 //     {
@@ -188,7 +176,7 @@ static void *extend_heap(size_t words)
 //         PUT(FTRP(bp), PACK(size, 0));            // 현재 블록 푸터 재설정
 //         bp = PREV_BLKP(bp);                      // 이전 블록의 시작점으로 포인터 변경
 //     }
-//     else // 이전 블록과 다음 블록 모두 빈 경우
+//     else if (!prev_alloc && !next_alloc) // 이전 블록과 다음 블록 모두 빈 경우
 //     {
 //         splice_free_block(NEXT_BLKP(bp)); // 다음 가용 블록을 free_list에서 제거
 //         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
@@ -196,26 +184,26 @@ static void *extend_heap(size_t words)
 //         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); // 다음 블록 푸터 재설정
 //         bp = PREV_BLKP(bp);                      // 이전 블록의 시작점으로 포인터 변경
 //     }
-//     return bp;          // 병합한 가용 블록의 포인터 반환
+//     add_free_block(bp);
+//     return bp; // 병합한 가용 블록의 포인터 반환
 // }
-
-static void *coalesce(void *bp)
+ static void *coalesce(void *bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); // 이전 블록 할당 상태
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); // 다음 블록 할당 상태
     size_t size = GET_SIZE(HDRP(bp));                   // 현재 블록 사이즈
 
     //모두 할당된 경우 마지막에 bp를 free list에 추가해주고 리턴만 해주면 됨
-
     if (prev_alloc && !next_alloc) // 다음 블록만 빈 경우
     {
-        //splice_free_block(NEXT_BLKP(bp)); // 가용 블록을 free_list에서 제거
+        splice_free_block(NEXT_BLKP(bp)); // 가용 블록을 free_list에서 제거
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0)); // 현재 블록 헤더 재설정
         PUT(FTRP(bp), PACK(size, 0)); // 다음 블록 푸터 재설정 (위에서 헤더를 재설정했으므로, FTRP(bp)는 합쳐질 다음 블록의 푸터가 됨)
     }
     else if (!prev_alloc && next_alloc) // 이전 블록만 빈 경우
     {
+        splice_free_block(PREV_BLKP(bp)); // 가용 블록을 free_list에서 제거
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 이전 블록 헤더 재설정
         PUT(FTRP(bp), PACK(size, 0));            // 현재 블록 푸터 재설정
@@ -223,66 +211,41 @@ static void *coalesce(void *bp)
     }
     else if (!prev_alloc && !next_alloc) // 이전 블록과 다음 블록 모두 빈 경우
     {
-        //splice_free_block(NEXT_BLKP(bp)); // 다음 가용 블록을 free_list에서 제거
+        splice_free_block(PREV_BLKP(bp)); // 이전 가용 블록을 free_list에서 제거
+        splice_free_block(NEXT_BLKP(bp)); // 다음 가용 블록을 free_list에서 제거
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 이전 블록 헤더 재설정
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); // 다음 블록 푸터 재설정
         bp = PREV_BLKP(bp);                      // 이전 블록의 시작점으로 포인터 변경
     }
-    add_free_block(bp);
-    return bp; // 병합한 가용 블록의 포인터 반환
+    add_free_block(bp); // 현재 병합한 가용 블록을 free_list에 추가
+    return bp;          // 병합한 가용 블록의 포인터 반환
 }
 
 static void *find_fit(size_t asize)
 {
     void *bp = free_listp;
+    void *fit_memory_pointer = bp;
+    size_t fit_size = DSIZE*100000000;
+    int flag = 0; //적합한 메모리가 없으면 0, 있으면 1
+
     while (bp != NULL) // 다음 가용 블럭이 있는 동안 반복
     {
-        if ((asize <= GET_SIZE(HDRP(bp)))) // 적합한 사이즈의 블록을 찾으면 반환
-            return bp;
+        if ((GET_SIZE(HDRP(bp)) - asize) >= 0 && (GET_SIZE(HDRP(bp)) - asize) < fit_size) // 적합한 사이즈의 블록을 찾으면 반환
+        {
+            fit_size = GET_SIZE(HDRP(bp)) - asize;
+            fit_memory_pointer = bp;
+            flag = 1;
+        }
+        if(fit_size <= WSIZE)
+            break;
         bp = GET_SUCC(bp); // 다음 가용 블록으로 이동
     }
     
+    if(flag)
+        return fit_memory_pointer;
     return NULL;
 }
-
-
-// static void place(void *bp, size_t asize)
-// {
-//     size_t csize = GET_SIZE(HDRP(bp)); // 현재 블록의 크기
-
-//     if ((csize - asize) >= (2 * DSIZE)) // 차이가 최소 블록 크기 16보다 같거나 크면 분할
-//     {
-//         PUT(HDRP(bp), PACK(asize, 1)); // 현재 블록에는 필요한 만큼만 할당
-//         PUT(FTRP(bp), PACK(asize, 1));
-
-//         bp = NEXT_BLKP(bp); // 다음 블록으로 이동
-
-//         PUT(HDRP(bp), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
-//         PUT(FTRP(bp), PACK((csize - asize), 0));
-
-//         GET_SUCC(bp) = GET_SUCC(PREV_BLKP(bp)); // 루트였던 블록의 PRED를 추가된 블록으로 연결
-
-//         if (PREV_BLKP(bp) == free_listp) 
-//         {
-//             free_listp = bp;
-//         }
-//         else
-//         {
-//             GET_PRED(bp) = GET_PRED(PREV_BLKP(bp));
-//             GET_SUCC(GET_PRED(PREV_BLKP(bp))) = bp;
-//         }
-
-//         if (GET_SUCC(bp) != NULL) // 다음 가용 블록이 있을 경우만
-//             GET_PRED(GET_SUCC(bp)) = bp;
-//     }
-//     else
-//     {
-//         splice_free_block(bp);
-//         PUT(HDRP(bp), PACK(csize, 1)); // 해당 블록 전부 사용
-//         PUT(FTRP(bp), PACK(csize, 1));
-//     }
-// }
 
 static void place(void *bp, size_t asize)
 {
@@ -290,14 +253,14 @@ static void place(void *bp, size_t asize)
 
     size_t csize = GET_SIZE(HDRP(bp)); // 현재 블록의 크기
 
-    if ((csize - asize) >= (4 * DSIZE)) { // 차이가 최소 블록 크기 16보다 같거나 크면 분할
+    if ((csize - asize) >= (2 * DSIZE)) { // 차이가 최소 블록 크기 16보다 같거나 크면 분할
         PUT(HDRP(bp), PACK(asize, 1)); // 현재 블록에는 필요한 만큼만 할당
         PUT(FTRP(bp), PACK(asize, 1));
 
         PUT(HDRP(NEXT_BLKP(bp)), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
         PUT(FTRP(NEXT_BLKP(bp)), PACK((csize - asize), 0));
         add_free_block(NEXT_BLKP(bp)); // 남은 블록을 free_list에 추가
-    } else {
+    }else {
         PUT(HDRP(bp), PACK(csize, 1)); // 해당 블록 전부 사용
         PUT(FTRP(bp), PACK(csize, 1));
     }
@@ -318,64 +281,45 @@ static void splice_free_block(void *bp)
         GET_PRED(GET_SUCC(bp)) = GET_PRED(bp);
 }
 
+// 가용 리스트의 맨 앞에 현재 블록을 추가하는 함수
 static void add_free_block(void *bp)
 {
-    if (free_listp == NULL){
-        GET_SUCC(bp) = free_listp;     // bp의 SUCC은 루트가 가리키던 블록
-        free_listp = bp;
-        return;
-    }
-
-    void *temp = free_listp;
-    for (;(GET_SUCC(temp) != NULL) && (GET_SIZE(HDRP(GET_SUCC(temp))) < GET_SIZE(HDRP(bp))) ; temp = GET_SUCC(temp));
-    //free list에 들어올 메모리의 위치로 포인터 이동시켜줌
-
-    if(GET_SUCC(temp) == NULL){ //만약 free list에 넣을 메모리 크기가 제일 클 경우
-        GET_SUCC(bp) = GET_SUCC(temp);
-        GET_PRED(bp) = temp;
-        GET_SUCC(temp) = bp;
-        return;
-    }
-    GET_PRED(GET_SUCC(temp)) = bp;
-    GET_SUCC(bp) = GET_SUCC(temp);
-    GET_PRED(bp) = temp;
-    GET_SUCC(temp) = bp;
-    
+    GET_SUCC(bp) = free_listp;     // bp의 SUCC은 루트가 가리키던 블록
+    if (free_listp != NULL)        // free list에 블록이 존재했을 경우만
+        GET_PRED(free_listp) = bp; // 루트였던 블록의 PRED를 추가된 블록으로 연결
+    free_listp = bp;               // 루트를 현재 블록으로 변경
 }
 
-// // 가용 리스트의 맨 앞에 현재 블록을 추가하는 함수
 // static void add_free_block(void *bp)
 // {
-//     GET_SUCC(bp) = free_listp;     // bp의 SUCC은 루트가 가리키던 블록
-//     if (free_listp != NULL)        // free list에 블록이 존재했을 경우만
-//         GET_PRED(free_listp) = bp; // 루트였던 블록의 PRED를 추가된 블록으로 연결
-//     free_listp = bp;               // 루트를 현재 블록으로 변경
-// }
-
-// // 가용 리스트에서 주소 오름차순에 맞게 현재 블록을 추가하는 함수
-// static void add_free_block(void *bp)
-// {
-//     void *currentp = free_listp;
-//     if (currentp == NULL)
-//     {
-//         free_listp = bp;
+//     // 가용 리스트가 비어있는 경우
+//     if (free_listp == NULL) {
 //         GET_SUCC(bp) = NULL;
+//         GET_PRED(bp) = NULL;
+//         free_listp = bp;
 //         return;
 //     }
 
-//     while (currentp < bp) // 검사중인 주소가 추가하려는 블록의 주소보다 작을 동안 반복
-//     { 
-//         if (GET_SUCC(currentp) == NULL || GET_SUCC(currentp) > bp)
-//             break;
-//         currentp = GET_SUCC(currentp);
+//     void *temp = free_listp;
+//     void *prev = NULL;
+
+//     // 적절한 위치를 찾아서 블록을 추가
+//     while (temp != NULL && GET_SIZE(HDRP(temp)) < GET_SIZE(HDRP(bp))) {
+//         prev = temp;
+//         temp = GET_SUCC(temp);
 //     }
-    
-//     GET_SUCC(bp) = GET_SUCC(currentp); // 루트였던 블록의 PRED를 추가된 블록으로 연결
-//     GET_SUCC(currentp) = bp;     // bp의 SUCC은 루트가 가리키던 블록
-//     GET_PRED(bp) = currentp;     // bp의 SUCC은 루트가 가리키던 블록
-    
-//     if (GET_SUCC(bp) != NULL) // 다음 가용 블록이 있을 경우만
-//     {
-//         GET_PRED(GET_SUCC(bp)) = bp;
+
+//     // 새로운 블록을 적절한 위치에 추가
+//     if (prev == NULL) { // 첫 번째 위치에 추가하는 경우
+//         GET_PRED(bp) = NULL;
+//         GET_SUCC(bp) = free_listp;
+//         GET_PRED(free_listp) = bp;
+//         free_listp = bp;
+//     } else { // 중간이나 마지막 위치에 추가하는 경우
+//         GET_SUCC(bp) = temp;
+//         GET_PRED(bp) = prev;
+//         GET_SUCC(prev) = bp;
+//         if (temp != NULL) // 마지막 위치에 추가하는 경우가 아닌 경우에만
+//             GET_PRED(temp) = bp;
 //     }
 // }
