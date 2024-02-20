@@ -1,13 +1,10 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <unistd.h>
 #include <string.h>
-
 #include "mm.h"
 #include "memlib.h"
-
 
 team_t team = {
     "team 3",
@@ -15,14 +12,6 @@ team_t team = {
     "jimyeongheon@gmail.com",
     "",
     ""};
-
-/* single word (4) or double word (8) alignment */
-#define ALIGNMENT 8
-
-/* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-
-#define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
 /* 기본 상수 & 매크로 */
 #define WSIZE 4             // word size
@@ -49,7 +38,6 @@ static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
-
 static void splice_free_block(void *bp); // 가용 리스트에서 제거
 static void add_free_block(void *bp);    // 가용 리스트에 추가
 
@@ -154,40 +142,32 @@ static void *extend_heap(size_t words)
     return coalesce(bp); // 병합 후 리턴 블록 포인터 반환
 }
 
- static void *coalesce(void *bp)
+static void *coalesce(void *bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); // 이전 블록 할당 상태
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); // 다음 블록 할당 상태
     size_t size = GET_SIZE(HDRP(bp));                   // 현재 블록 사이즈
 
     //모두 할당된 경우 마지막에 bp를 free list에 추가해주고 리턴만 해주면 됨
-    if (prev_alloc && !next_alloc) // 다음 블록만 빈 경우
-    {
-        splice_free_block(NEXT_BLKP(bp)); // 가용 블록을 free_list에서 제거
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-        PUT(HDRP(bp), PACK(size, 0)); // 현재 블록 헤더 재설정
-        PUT(FTRP(bp), PACK(size, 0)); // 다음 블록 푸터 재설정 (위에서 헤더를 재설정했으므로, FTRP(bp)는 합쳐질 다음 블록의 푸터가 됨)
-    }
-    else if (!prev_alloc && next_alloc) // 이전 블록만 빈 경우
-    {
-        splice_free_block(PREV_BLKP(bp)); // 가용 블록을 free_list에서 제거
-        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 이전 블록 헤더 재설정
-        PUT(FTRP(bp), PACK(size, 0));            // 현재 블록 푸터 재설정
-        bp = PREV_BLKP(bp);                      // 이전 블록의 시작점으로 포인터 변경
-    }
-    else if (!prev_alloc && !next_alloc) // 이전 블록과 다음 블록 모두 빈 경우
-    {
+    if (!prev_alloc) { // 이전 블록이 빈 경우
         splice_free_block(PREV_BLKP(bp)); // 이전 가용 블록을 free_list에서 제거
-        splice_free_block(NEXT_BLKP(bp)); // 다음 가용 블록을 free_list에서 제거
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 이전 블록 헤더 재설정
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); // 다음 블록 푸터 재설정
-        bp = PREV_BLKP(bp);                      // 이전 블록의 시작점으로 포인터 변경
+        bp = PREV_BLKP(bp);
+        size += GET_SIZE(HDRP(bp));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size, 0));
     }
-    add_free_block(bp); // 현재 병합한 가용 블록을 free_list에 추가
-    return bp;          // 병합한 가용 블록의 포인터 반환
+
+    if (!next_alloc) { // 다음 블록이 빈 경우
+        splice_free_block(NEXT_BLKP(bp)); // 다음 가용 블록을 free_list에서 제거
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size, 0));
+    }
+
+    add_free_block(bp);
+    return bp;
 }
+
 
 static void *find_fit(size_t asize)
 {
@@ -268,4 +248,3 @@ static void add_free_block(void *bp)
             GET_PRED(temp) = bp;
     }
 }
-
