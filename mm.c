@@ -209,10 +209,10 @@ static void add_free_block(void *bp)
     void *add_node = bp;
     void *temp;
 
+    
     // 적절한 위치를 찾아서 블록을 추가
     while (tree_node)
     {
-
         if(GET_SIZE(HDRP(add_node)) > GET_SIZE(HDRP(tree_node)))
         {
             GET_PRED(add_node) = GET_PRED(tree_node);
@@ -241,7 +241,6 @@ static void add_free_block(void *bp)
             GET_SUCC(tree_node) = add_node;
             break;
         }
-    
     }
 }
 
@@ -316,58 +315,94 @@ static void tree_refactoring()
     }
 }
 
+// static void place(void *bp, size_t asize)
+// {
+
+//     void *tree_node = free_listp;
+//     void *temp;
+//     size_t csize = GET_SIZE(HDRP(bp)); // 현재 블록의 크기
+
+//     if ((csize - asize) >= (2 * DSIZE)) { // 차이가 최소 블록 크기 16보다 같거나 크면 분할
+//         PUT(HDRP(bp), PACK(asize, 1)); // 현재 블록에는 필요한 만큼만 할당
+//         PUT(FTRP(bp), PACK(asize, 1));
+
+//         PUT(HDRP(NEXT_BLKP(bp)), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
+//         PUT(FTRP(NEXT_BLKP(bp)), PACK((csize - asize), 0));
+//         free_listp = NEXT_BLKP(bp);
+//     } else {
+//         PUT(HDRP(bp), PACK(csize, 1)); // 해당 블록 전부 사용
+//         PUT(FTRP(bp), PACK(csize, 1));
+//         while (GET_PRED(tree_node)) {
+//             if(GET_PRED(GET_PRED(tree_node)) == NULL)
+//             {
+//                 temp = GET_PRED(tree_node);
+//                 GET_PRED(tree_node) = NULL;
+//             }
+//             tree_node = GET_PRED(tree_node);
+//             // if(GET_SUCC(tree_node) && GET_PRED(tree_node)) {
+//             //     temp = GET_SIZE(HDRP(GET_SUCC(tree_node))) > GET_SIZE(HDRP(GET_PRED(tree_node))) ? GET_SUCC(tree_node) : GET_PRED(tree_node);
+//             //     if(!GET_SUCC(temp) && !GET_PRED(temp)){
+//             //         tree_node = NULL;
+//             //         break;
+//             //     }
+//             //     else
+//             //         tree_node = temp;
+//             // }
+//             // else if(GET_SUCC(tree_node) && !GET_PRED(tree_node)){
+//             //     temp = GET_SUCC(tree_node);
+//             //     if(!GET_SUCC(temp) && !GET_PRED(temp)){
+//             //         tree_node = NULL;
+//             //         break;
+//             //     }
+//             //     else
+//             //         tree_node = temp;
+//             // }
+//             // else if(!GET_SUCC(tree_node) && GET_PRED(tree_node)){
+//             //     temp = GET_PRED(tree_node);
+//             //     if(!GET_SUCC(temp) && !GET_PRED(temp)){
+//             //         tree_node = NULL;
+//             //         break;
+//             //     }
+//             //     else
+//             //         tree_node = temp;
+//             // }
+//         }
+//         if(GET_PRED(free_listp))
+//         {
+//             GET_SUCC(temp) = GET_SUCC(free_listp);
+//             GET_PRED(temp) = GET_PRED(free_listp);
+//             free_listp = temp;
+//         }
+//     }
+
+//     tree_refactoring();
+// }
 static void place(void *bp, size_t asize)
 {
-
-    void *tree_node = free_listp;
-    void *temp;
     size_t csize = GET_SIZE(HDRP(bp)); // 현재 블록의 크기
 
     if ((csize - asize) >= (2 * DSIZE)) { // 차이가 최소 블록 크기 16보다 같거나 크면 분할
         PUT(HDRP(bp), PACK(asize, 1)); // 현재 블록에는 필요한 만큼만 할당
         PUT(FTRP(bp), PACK(asize, 1));
 
-        PUT(HDRP(NEXT_BLKP(bp)), PACK((csize - asize), 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
-        PUT(FTRP(NEXT_BLKP(bp)), PACK((csize - asize), 0));
-        free_listp = NEXT_BLKP(bp);
+        // 남은 크기를 다음 블록에 할당(가용 블록)
+        void *next_bp = NEXT_BLKP(bp);
+        PUT(HDRP(next_bp), PACK(csize - asize, 0));
+        PUT(FTRP(next_bp), PACK(csize - asize, 0));
+
+        // 가용 리스트에 추가
+        add_free_block(next_bp);
     } else {
-        PUT(HDRP(bp), PACK(csize, 1)); // 해당 블록 전부 사용
+        // 해당 블록 전부 사용
+        PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
-        while (1) {
-            if(GET_SUCC(tree_node) && GET_PRED(tree_node)) {
-                temp = GET_SIZE(HDRP(GET_SUCC(tree_node))) > GET_SIZE(HDRP(GET_PRED(tree_node))) ? GET_SUCC(tree_node) : GET_PRED(tree_node);
-                if(!GET_SUCC(temp) && !GET_PRED(temp)){
-                    tree_node = NULL;
-                    break;
-                }
-                else
-                    tree_node = temp;
-            }
-            else if(GET_SUCC(tree_node) && !GET_PRED(tree_node)){
-                temp = GET_SUCC(tree_node);
-                if(!GET_SUCC(temp) && !GET_PRED(temp)){
-                    tree_node = NULL;
-                    break;
-                }
-                else
-                    tree_node = temp;
-            }
-            else if(!GET_SUCC(tree_node) && GET_PRED(tree_node)){
-                temp = GET_PRED(tree_node);
-                if(!GET_SUCC(temp) && !GET_PRED(temp)){
-                    tree_node = NULL;
-                    break;
-                }
-                else
-                    tree_node = temp;
-            }
-        }
-        GET_SUCC(temp) = GET_SUCC(free_listp);
-        GET_PRED(temp) = GET_PRED(free_listp);
-        free_listp = temp;
+
+        // 가용 리스트에서 제거
+        splice_free_block(bp);
     }
 
     tree_refactoring();
 }
+
 
 
